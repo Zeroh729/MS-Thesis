@@ -1,15 +1,15 @@
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/utils.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/common.R")
 
-emclassifier <- function(vecFluo, volDrp){
-  res <- em(data.frame(Fluorescence=sort(vecFluo)), volDrp)
+emclassifier <- function(vecFluo, volDrp, crit="BIC"){
+  res <- em(data.frame(Fluorescence=sort(vecFluo)), volDrp, crit=crit)
   return(res)
 }
 
 
 ## EM STARTS HERE
 library(EMCluster)
-em <- function(drp, volDrp){
+em <- function(drp, volDrp, crit="BIC"){
   getClusMemberProb <- function(emres){
     clusterMem <- e.step(drp, emres, norm = T)$Gamma
     means <- emres$Mu
@@ -35,9 +35,15 @@ em <- function(drp, volDrp){
   emres_G2 <- emcluster(drp, init.EM(drp, nclass = 2), assign.class = TRUE) # MAIN FUNCTION
   emres_G3 <- emcluster(drp, init.EM(drp, nclass = 3), assign.class = TRUE) # MAIN FUNCTION
 
-  icl_G2 <- em.icl(drp, emres_G2)
-  icl_G3 <- em.icl(drp, emres_G3) 
-  if(icl_G3 < icl_G2){
+  if(crit == "BIC"){
+    scoreG2 <- em.bic(drp, emres_G2)
+    scoreG3 <- em.bic(drp, emres_G3)
+  }else if(crit == "ICL"){
+    scoreG2 <- em.icl(drp, emres_G2)
+    scoreG3 <- em.icl(drp, emres_G3) 
+  }
+  
+  if(scoreG3 < scoreG2){
     emres <- emres_G3
     G <- 3
   }else{
@@ -46,17 +52,18 @@ em <- function(drp, volDrp){
   }
   
   g(negMemberProb, posMemberProb, classification) %=% getClusMemberProb(emres)
-  nneg <- sum(negMemberProb > posMemberProb)
+  nneg <- sum(classification == "neg")
   
   res <- list()
   res$est <- cal_concentration(nneg, nrow(drp),volDrp)
   res$member <- list(negProb = negMemberProb, posProb = posMemberProb)
   res$G <- G
   res$em <- emres
-  res$bestmodel <- paste(paste("ICL of G=2 is",icl_G2), paste("ICL of G=3 is",icl_G3), sep = "\n")
+  res$crit <- "ICL"
+  res$bestmodel <- paste(paste(crit, "of G=2 is",scoreG2), paste(crit, "of G=3 is", scoreG3), sep = "\n")
   res$classification <- classification
-  res$negThres <- max(which(x$classification == "neg"))
-  res$posThres <- min(which(x$classification == "pos"))
+  res$negThres <- drp[max(which(classification == "neg")),]
+  res$posThres <- drp[min(which(classification == "pos")),]
   return(res)
 }
 

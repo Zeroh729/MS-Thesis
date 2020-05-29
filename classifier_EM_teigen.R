@@ -10,13 +10,13 @@ source("D:/~Masters/~ MS-STAT/~THESIS/Code/utils.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/common.R")
 
 
-emclassifier_teigen <- function(vecFluo, volDrp){
-  res <- em_teigen(vecFluo, volDrp)
+emclassifier_teigen <- function(vecFluo, volDrp, crit="BIC"){
+  res <- em_teigen(vecFluo, volDrp, crit)
   return(res)
 }
 
 
-em_teigen <- function(drp, volDrp){
+em_teigen <- function(drp, volDrp, crit="BIC"){ # "ICL" or "BIC"
   getClusMemberProb <- function(emres){
     means <- emres$parameters$mean
     posClust <- which.max(means)
@@ -25,7 +25,7 @@ em_teigen <- function(drp, volDrp){
     
     clusts <- c(posClust, negClust, rainClust)
     names(clusts) <- c("pos", "neg", "rain")
-    #clusts <- sort(clusts)
+    clusts <- sort(clusts)
     classification <- names(clusts[emres$classification])
     
     print(paste("Negative Mu:", means[negClust], "Positive Mu:", means[posClust]))
@@ -34,23 +34,30 @@ em_teigen <- function(drp, volDrp){
     posMemberProb <- emres$fuzzy[,posClust]
     negMemberProb <- emres$fuzzy[,negClust]
     rainMemberProb <- emres$fuzzy[,rainClust]
-    thres <- NA
-    return(list(negMemberProb,posMemberProb, thres, classification))
+    return(list(negMemberProb,posMemberProb, classification))
   }
   
   res <- list()
-  emres <- teigen(x = sort(drp), Gs=2:3, scale = FALSE, convstyle = "lop")   # MAIN FUNCTION
+  emres_orig <- teigen(x = drp, Gs=2:3, scale = FALSE, convstyle = "lop")   # MAIN FUNCTION
   
-  g(negMemberProb, posMemberProb, thres, classification) %=% getClusMemberProb(emres)
-  nneg <- sum(negMemberProb > posMemberProb)
+  if(crit=="ICL"){
+    emres <- emres_orig$iclresults
+  }else{
+    emres <- emres_orig
+  }
+  
+  g(negMemberProb, posMemberProb, classification) %=% getClusMemberProb(emres)
+  nneg <- sum(classification == "neg")
   
   res$est <- cal_concentration(nneg, length(drp), volDrp)
   res$member <- list(negProb = negMemberProb, posProb = posMemberProb)
+  res$G <- emres$G
   res$em <- emres
-  res$thres <- thres
+  res$crit <- crit
+  res$bestmodel <- paste0(emres$bestmodel,"\n", emres$iclresults$bestmodel)
   res$classification <- classification
-  res$negThres <- max(which(x$classification == "neg"))
-  res$posThres <- min(which(x$classification == "pos"))
+  res$negThres <- drp[max(which(classification == "neg"))]
+  res$posThres <- drp[min(which(classification == "pos"))]
   return(res)
 }
 
@@ -66,4 +73,7 @@ teigen_dist <- function(x, df, mu, sigma){
   }
   return(prob)
 }
+
+# em_teigen(flou, 0.85, crit="ICL")
+
 

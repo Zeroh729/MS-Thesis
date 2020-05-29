@@ -24,46 +24,62 @@ vecFlou_toDf  <- function(flou, classifier=""){
   obs <- c(1:length(flou))
   cl <- rep("drp", length(flou))
   res_info <- list(classifier=classifier)
-  if(classifier == "cloudy"){
+  mainClassifier <- strsplit(classifier, " ")[[1]][1]
+  criteria <- gsub("(\\(|\\))", "", strsplit(classifier, " ")[[1]][2])
+  if(mainClassifier == "cloudy"){
     cl <- cloudyClassifier(flou)
     cl <- factor(cl, levels = c("pos", "neg",  "rain"))
-  }else if(classifier == "cloudy_rain"){
+  }else if(mainClassifier == "cloudy_rain"){
     cl <- cloudyClassifier(flou, showRain = TRUE)
     cl <- factor(cl, levels = c("pos", "neg",  "rain"))
-  }else if(classifier == "EM"){
-    res <- emclassifier(flou, volDrp=0.85)
+  }else if(mainClassifier == "EM"){
+    criteria <- if(is.na(criteria)) "BIC" else criteria
+    res <- emclassifier(flou, volDrp=0.85, crit = criteria)
     cl <- res$classification
     cl <- factor(cl, levels = c("pos", "neg",  "rain"))
     
     # TODO - Move all this in emclassifier function
     estParam <- data.frame(Mu = res$em$Mu, Sigma = sqrt(res$em$LTSigma), MixProp = res$em$pi) %>% 
-      mutate(Thres = rep(res$thres, nrow(.))) %>% 
+      mutate(NegThres = rep(res$negThres, nrow(.))) %>% 
+      mutate(PosThres = rep(res$posThres, nrow(.))) %>% 
       arrange(Mu)
     res_info$est_parameter <- estParam
-    res_info$desc <- bquote(atop("Neg~N("~mu==.(round(estParam[1,"Mu"],2))~","~sigma==.(round(estParam[1,"Sigma"],2))~")",
-                                 "Pos~N("~mu==.(round(estParam[2,"Mu"],2))~","~sigma==.(round(estParam[2,"Sigma"],2))~")"))
-  }else if(classifier == "EM_t"){
-    res <- emclassifier_teigen(flou, volDrp=0.85)
+    G <- res$G
+    
+    title <- bquote("Neg~N("~mu==.(round(estParam[1,"Mu"],2))~","~sigma==.(round(estParam[1,"Sigma"],2))~")")
+    subtitle <- bquote("Pos~N("~mu==.(round(estParam[G,"Mu"],2))~","~sigma==.(round(estParam[G,"Sigma"],2))~")")
+    if(G == 3){
+      res_info$desc <- bquote("Rain~N("~mu==.(round(estParam[2,"Mu"],2))~","~sigma==.(round(estParam[2,"Sigma"],2))~")")
+    }
+    
+    res_info$G <- G
+    res_info$title <- title
+    res_info$subtitle <- subtitle
+  }else if(mainClassifier == "EM_t"){
+    criteria <- if(is.na(criteria)) "BIC" else criteria
+    res <- emclassifier_teigen(flou, volDrp=0.85, crit = criteria)
     cl <- res$classification
     cl <- factor(cl, levels = c("pos", "neg",  "rain"))
     
     # TODO - Move all this in emclassifier_teigen function
     estParam <- data.frame(Mu = res$em$parameters$mean, Sigma = sqrt(c(res$em$parameters$sigma)), Df = res$em$parameters$df, MixProp = res$em$parameters$pig) %>%
-      mutate(Thres = rep(res$thres, nrow(.))) %>%
+      mutate(NegThres = rep(res$negThres, nrow(.))) %>%
+      mutate(PosThres = rep(res$posThres, nrow(.))) %>% 
       arrange(Mu)
     res_info$est_parameter <- estParam
+    G <- res$G
     
-    G <- nrow(estParam)
-    title <- bquote("Neg~"~t~"("~v==.(round(estParam[1,"Df"],2))~","~mu==.(round(estParam[1,"Mu"],2))~","~sigma==.(round(estParam[1,"Sigma"],2))~"); Pos~"~t~"("~v==.(round(estParam[G,"Df"],2))~","~mu==.(round(estParam[G,"Mu"],2))~","~sigma==.(round(estParam[G,"Sigma"],2))~")")
-    subtitle <- ""
-    desc <- bquote(.(paste0(res$em$bestmodel,"\n", res$em$iclresults$bestmodel)))
+    title <- bquote("Neg~"~t~"("~v==.(round(estParam[1,"Df"],2))~","~mu==.(round(estParam[1,"Mu"],2))~","~sigma==.(round(estParam[1,"Sigma"],2))~")")
+    subtitle <- bquote("Pos~"~t~"("~v==.(round(estParam[G,"Df"],2))~","~mu==.(round(estParam[G,"Mu"],2))~","~sigma==.(round(estParam[G,"Sigma"],2))~")")
     if(G == 3){
-      subtitle <- bquote("Rain~"~t~"("~v==.(round(estParam[2,"Df"],2))~","~mu==.(round(estParam[2,"Mu"],2))~","~sigma==.(round(estParam[2,"Sigma"],2))~")")
+      res_info$desc <- bquote("Rain~"~t~"("~v==.(round(estParam[2,"Df"],2))~","~mu==.(round(estParam[2,"Mu"],2))~","~sigma==.(round(estParam[2,"Sigma"],2))~")")
     }
+    res_info$G <- G
     res_info$title <- title
     res_info$subtitle <- subtitle
-    res_info$desc <- desc
   }
+  res_info$classifier <- mainClassifier
+  res_info$criteria <- if(is.na(criteria)) "" else paste0("(",criteria,")")
   data <- data.frame(flou, obs, cl)
   return(list(data, res_info))
 } 
@@ -102,14 +118,18 @@ getList_Hist <- function(listData, listResInfo, wDens = FALSE){
   }
   
   nrow <- 2
-  ncol <- as.integer(n_repl/2)
+  # ncol <- as.integer(n_repl/2)
+  # widths <- c(rep(100/ncol, ncol))
   
+  ncol <- as.integer(n_repl/2)
   p1 <- listPlots[[1]]
   listPlots[(ncol+2):(n_repl+1)] <- listPlots[(ncol+1):(n_repl)]
   listPlots[[(ncol+1)]] <- get_legend(p1)
   listPlots[[1]] <- p1 + theme(legend.position = "none")
   widths <- c(rep(95/ncol, ncol),5)
-  return(list(listPlots=listPlots, widths=widths, ncol=(ncol+1), nrow=nrow, xlab="flourescence", ylab="frequency"))
+  ncol <- ncol + 1
+  
+  return(list(listPlots=listPlots, widths=widths, ncol=ncol, nrow=nrow, xlab="flourescence", ylab="frequency"))
 }
 
 getHist <- function(i, listPlots, listData){
@@ -133,17 +153,18 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
     if(resInfo$classifier == "EM"){
       y <- dnorm(x, mean = estParam[clus,"Mu"], sd = estParam[clus,"Sigma"])     
     }else if(resInfo$classifier == "EM_t"){
-      y <- dt.scaled(x, df=estParam[clus,"Df"], mean=estParam[clus,"Mu"], sd=estParam[clus,"Sigma"])
+      y <- teigen_dist(x, df=estParam[clus,"Df"], mu=estParam[clus,"Mu"], sigma=estParam[clus,"Sigma"]^2)
     }
     y <- y * estParam[clus, "MixProp"]
     return(y)
   }
   
-  xlabel <- resInfo$desc
+  G <- resInfo$G
+  xlabel <- if("desc" %in% names(resInfo)) resInfo$desc else ""
   title <- if("title" %in% names(resInfo)) resInfo$title else ""
   subtitle <- if("subtitle" %in% names(resInfo)) resInfo$subtitle else ""
-  thres <- estParam[1, "Thres"]
-  G <- nrow(estParam)
+  negThres <- estParam[1, "NegThres"]
+  posThres <- if(G == 3) estParam[1, "PosThres"] else NA
   
   plot <- ggplot(data, aes(x=flou, fill=cl)) +
     geom_histogram(aes(y =..density..),color="gray64", fill="gray88") +
@@ -154,7 +175,7 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
     xlab(xlabel) +
     ylab("") +
     theme_minimal() +
-    theme(axis.title.x = element_text(color = "grey20", size = 8, hjust = 0),
+    theme(axis.title.x = element_text(color = "gray60", size = 8, hjust = 0),
           plot.title = element_text(size = 8.5), plot.subtitle = element_text(size = 8.5))
   
   if(G == 3){
@@ -162,12 +183,14 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
       stat_function(data = . %>% filter(cl=="rain"), fun = funcShaded, geom="area", alpha=0.3, args=list(clus=2))
   }
   
-  if(!is.na(thres)){
-    xdens <- summary(density(data$flou)$x)
-    thresLabel_offset <-  (xdens[['Max.']] - xdens[['Min.']])/25
-    plot <- plot +
-      geom_vline(xintercept = thres) +
-      geom_text(aes(x=thres+thresLabel_offset, y=summary(density(flou)$y)[['Max.']], label=round(thres,2)), colour="gray45", text=element_text(size=6))
+  for(thres in c(negThres, posThres)){
+    if(!is.na(thres)){
+      # xdens <- summary(density(data$flou)$x)
+      thresLabel_offset <- (max(data$flou) - min(data$flou))/25#(xdens[['Max.']] - xdens[['Min.']])/25
+      plot <- plot +
+        geom_vline(xintercept = thres) +
+        geom_text(aes(y=summary(density(flou)$y)[['Max.']]),x=thres+thresLabel_offset, label=round(thres,2), colour="gray45", text=element_text(size=6))
+    }
   }
   
   if(i != 1) { plot <- plot + theme(legend.position = "none") }
@@ -203,7 +226,7 @@ graphFacetFlou <- function(list_vecFlou, title, classifier = "", plot="scatter",
   xlab <- p[['ncol']]
   ylab <- p[['nrow']]
   
-  facet <- do.call(grid.arrange, c(listPlots, nrow = nrow, ncol=ncol, widths=list(widths), top=title, left=xlab, bottom=ylab, name="name"))
+  facet <- do.call(grid.arrange, c(listPlots, nrow = nrow, ncol=ncol, widths=list(widths), top=title, name="name"))
   if(saveImg){
     filedir <- paste0("plot_",plot,"-",classifier)
     dir.create(filedir, showWarnings = FALSE)
@@ -275,17 +298,18 @@ main <- function(classifier, plot="scatter", saveImg = F){
   print("done!")
 }
 
-# classifier : "", "cloudy", "cloudy_rain", "EM", "EM_t"
-# plot : "hist", "histWDens", "scatter"
-main(classifier="EM_t", plot="histWDens", saveImg = TRUE)
-
-# graphPlateTarget(1,"acp", "EM_t", plot="histWDens", saveImg = FALSE)
-# graphPlateTarget(4,"TC1507", "EM", plot="histWDens", saveImg = FALSE)
-# graphPlateTarget(7,"M88017", "EM", plot="histWDens", saveImg = FALSE)
 graphPlateTarget <- function(plate_id, target, classifier, factorID="", replicateID="", plot="scatter", saveImg=F){
   title <- custom_title(plate_id, target, "", "", classifier)
   graphFacetFlou(df_orig[df_orig$plate.ID == plate_id & df_orig$Target == target,-c(1:11)], title, plot = plot, classifier = classifier, saveImg=saveImg)
 }
+
+# classifier : "", "cloudy", "cloudy_rain", "EM (BIC | ICL)", "EM_t (BIC | ICL)"
+# plot : "hist", "histWDens", "scatter"
+# main(classifier="EM_t", plot="histWDens", saveImg = TRUE)
+
+graphPlateTarget(1,"acp", "EM (ICL)", plot="histWDens", saveImg = FALSE)
+# graphPlateTarget(4,"TC1507", "EM", plot="histWDens", saveImg = FALSE)
+# graphPlateTarget(7,"M88017", "EM", plot="histWDens", saveImg = FALSE)
 
 # Previous Codes
 # ["le1", "cru", hmg", "acp", "M810", "TC1507", "M88017", "M1445", "GTS4032", "M88701","M89788","GT73"]
