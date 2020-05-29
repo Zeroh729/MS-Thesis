@@ -1,0 +1,63 @@
+---
+title: "Estimating total volume"
+output: html_notebook
+---
+### Setup
+```{r Import files}
+source("cloudy_funcs.R")
+
+DIR = "D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master"
+FILENAME = "Dataset_p1_le1.csv"
+df <- read.csv(paste(DIR,"/",FILENAME, sep=""))
+```
+
+```{r Setup}
+ROW = 1
+VOL_COMP = 0.85  #in nanoliter
+VOL_SAMP = 20    #in microliter
+
+data_flo <- extractFlourescence(df, ROW)
+```
+
+### Estimate kernel density of flouresence
+```{r kde}
+bw <- bw.nrd0(data_flo)     # rule-of-thumb calculation for kde bandwidth, check ?bw.nrd0
+bw <- if(bw<50) 50 else bw  # bandwidth must be at least 50
+
+kde <- density(data_flo, bw=bw)
+plot(kde)
+```
+### Finding peaks
+Find maximum and minimum peaks from the kernel density
+```{r Find peaks}
+WINDOW_SIZE = 20
+peaks <- findpeaks(kde$y, bw=WINDOW_SIZE)    # find max & min peaks of kde's y axis
+                                             # returns max & min of X & Y vectors of size N, where N = # of peaks found
+list_iMax <- peaks$max_X
+list_iMin <- peaks$min_X
+
+list_densMax <- peaks$max_Y
+list_densMin <- peaks$min_Y
+
+list_floMax <- kde$x[list_iMax]
+list_floMin <- kde$x[list_iMin]
+```
+#### Filtering
+Remove densities < (0.01)*max(densities)
+Outlying fluorescence values will otherwise cause insignificantly small peaks that screw with algorithm robustness
+```{r Filtering}
+onePct_max <- max(list_densMax)/100
+if(any(list_densMax < onePct_max)){
+  remove <- which(list_densMax < onePct_max)
+  list_iMax <- list_iMax[-remove]
+  list_densMax    <- list_densMax[-remove]
+  list_floMax     <- list_floMax[-remove]
+}
+```
+#### Case controls
+##### Case 1 : 
+```{r}
+
+```
+
+
