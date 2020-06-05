@@ -54,7 +54,8 @@ em_teigen <- function(drp, volDrp, crit="BIC"){ # "ICL" or "BIC"
   res$G <- emres$G
   res$em <- emres
   res$crit <- crit
-  res$bestmodel <- paste0(emres$bestmodel,"\n", emres$iclresults$bestmodel)
+  res$critScore <- emres[[tolower(crit)]]
+  res$bestmodel <- paste0(emres_orig$bestmodel,"\n", emres_orig$iclresults$bestmodel)
   res$classification <- classification
   res$negThres <- drp[max(which(classification == "neg"))]
   res$posThres <- drp[min(which(classification == "pos"))]
@@ -74,6 +75,5 @@ teigen_dist <- function(x, df, mu, sigma){
   return(prob)
 }
 
-# em_teigen(flou, 0.85, crit="ICL")
-
+# x <- emclassifier_teigen(flou, 0.85, crit="BIC")
 

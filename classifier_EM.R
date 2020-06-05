@@ -59,7 +59,8 @@ em <- function(drp, volDrp, crit="BIC"){
   res$member <- list(negProb = negMemberProb, posProb = posMemberProb)
   res$G <- G
   res$em <- emres
-  res$crit <- "ICL"
+  res$crit <- crit
+  res$critScore <- min(scoreG2, scoreG3)
   res$bestmodel <- paste(paste(crit, "of G=2 is",scoreG2), paste(crit, "of G=3 is", scoreG3), sep = "\n")
   res$classification <- classification
   res$negThres <- drp[max(which(classification == "neg")),]

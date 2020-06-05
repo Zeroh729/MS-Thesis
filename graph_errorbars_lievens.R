@@ -23,8 +23,8 @@ calculate_SE <- function(data, title, classifier, factorname, saveImg){ #data mu
 
 graph_ErrorBar <- function(data, title, classifier, factorname, saveImg){ #data must have the columns "factors" & "replicates" 
   pd <- position_dodge(0.1)
-  p <- ggplot(data, aes(x=factors, y=est, colour=replicate, group=replicate)) + 
-    geom_errorbar(aes(ymin=est_lower, ymax=est_upper), width=.1, position=pd) +
+  p <- ggplot(data, aes(x=factors, y=estConc, colour=replicate, group=replicate)) + 
+    geom_errorbar(aes(ymin=estConc_l, ymax=estConc_u), width=.1, position=pd) +
     labs(title=title, x=factorname, y = "Estimate") +
     geom_point(position=pd)
   if(saveImg){
@@ -84,6 +84,7 @@ main <- function(classifier, func, save = F){
         }
         y$factors <- as.factor(y[[factorname]])
         y$replicate <- as.factor(rep(c(1:replicates), length(unique(y$factors))))
+        
         func(y, custom_title(i, j, classifier), classifier, factorname, saveImg=save)
       }
     }else if(i == 5){
@@ -104,16 +105,14 @@ main <- function(classifier, func, save = F){
 }
 
 setwd("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/summarized")
-df_est <- read.csv("Estimates_definetherain.csv")
-
+df_est <- read.csv("Estimates_lievens_EM_t (BIC).csv")
 # Classifiers : "cloudy", "cloudy_norain", "EM", "definetherain"
 #
 # OPTION 1 : Graph Error bars
-# main(classifier="definetherain", graph_ErrorBar, save = T)
+main(classifier="EM_t (BIC)", graph_ErrorBar, save = T)
 #
 # OPTION 2 : Calculate Estimate Statistics
-outfilename <- "EstimateStats_definetherain.csv"
-main(classifier="definetherain", calculate_SE, save = T)
-
+# outfilename <- "EstimateStats_definetherain.csv"
+# main(classifier="definetherain", calculate_SE, save = T)
 
 # graphPlateTarget(2, "acp", custom_title(2, "acp", "cloudy"))

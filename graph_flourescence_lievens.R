@@ -12,6 +12,8 @@ source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_teigen.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/utils.R")
 
+..PRINTPLOT <- FALSE
+
 prepareFlou <- function(flou){
   flou <- flou[!is.na(flou)]
   flou <- as.numeric(as.character((flou)))
@@ -165,6 +167,7 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
   subtitle <- if("subtitle" %in% names(resInfo)) resInfo$subtitle else ""
   negThres <- estParam[1, "NegThres"]
   posThres <- if(G == 3) estParam[1, "PosThres"] else NA
+  plotHeight <- summary(density(data$flou)$y)[['Max.']]
   
   plot <- ggplot(data, aes(x=flou, fill=cl)) +
     geom_histogram(aes(y =..density..),color="gray64", fill="gray88") +
@@ -178,6 +181,10 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
     theme(axis.title.x = element_text(color = "gray60", size = 8, hjust = 0),
           plot.title = element_text(size = 8.5), plot.subtitle = element_text(size = 8.5))
   
+  if(!is.na(resInfo$reactId)){
+    plot <- plot + annotate("text", x=max(data$flou), y=plotHeight, label=resInfo$reactId, colour = "gray", size=4)
+  }
+  
   if(G == 3){
     plot <- plot +
       stat_function(data = . %>% filter(cl=="rain"), fun = funcShaded, geom="area", alpha=0.3, args=list(clus=2))
@@ -189,7 +196,7 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
       thresLabel_offset <- (max(data$flou) - min(data$flou))/25#(xdens[['Max.']] - xdens[['Min.']])/25
       plot <- plot +
         geom_vline(xintercept = thres) +
-        geom_text(aes(y=summary(density(flou)$y)[['Max.']]),x=thres+thresLabel_offset, label=round(thres,2), colour="gray45", text=element_text(size=6))
+        geom_text(aes(y=plotHeight),x=thres+thresLabel_offset, label=round(thres,2), colour="gray45", text=element_text(size=6))
     }
   }
   
@@ -203,8 +210,9 @@ classifyFlou <- function(list_vecFlou, classifier){
   listResInfo <- list()
   for(i in 1:nrow(list_vecFlou)){
     # returns id | flou | cl=["", "cloudy", "cloudy_rain"]
-    g(data, res_info) %=% vecFlou_toDf(list_vecFlou[i,], classifier)
+    g(data, res_info) %=% vecFlou_toDf(list_vecFlou[i,-c(1:11)], classifier)
     listData[[length(listData)+1]] <- data
+    res_info$reactId <- list_vecFlou[i,"react.ID"]
     listResInfo[[length(listResInfo)+1]] <- res_info
   }
   return(list(listData, listResInfo))
@@ -226,7 +234,11 @@ graphFacetFlou <- function(list_vecFlou, title, classifier = "", plot="scatter",
   xlab <- p[['ncol']]
   ylab <- p[['nrow']]
   
-  facet <- do.call(grid.arrange, c(listPlots, nrow = nrow, ncol=ncol, widths=list(widths), top=title, name="name"))
+  # facet <- do.call(grid.arrange, c(listPlots, nrow = nrow, ncol=ncol, widths=list(widths), top=title, name="name"))
+  facet <<- arrangeGrob(grobs = listPlots, nrow = nrow, ncol=ncol, widths=widths, top=title, name="name")
+  if(..PRINTPLOT){
+    grid::grid.draw(facet)
+  }
   if(saveImg){
     filedir <- paste0("plot_",plot,"-",classifier)
     dir.create(filedir, showWarnings = FALSE)
@@ -235,6 +247,7 @@ graphFacetFlou <- function(list_vecFlou, title, classifier = "", plot="scatter",
     ggsave(paste0(filename,".png"), facet,"png", width = 12, height = height, units = c("in"))
   }
 }
+
 graphFacetFlou_Reps <- function(list_vecFlou, plate, target, classifier, plot, factorID="", saveImg){
   for(repID in 1:4){
     title <- custom_title(plate, target, factorID, repID, classifier) #plate, target, factorID, replicateID, classifier
@@ -275,7 +288,7 @@ filterReplicates <- function(n_repl, plate, factorID=1, replicateID=1){
 }
 
 main <- function(classifier, plot="scatter", saveImg = F){
-  for(i in c(7)){ #unique(df_orig$plate.ID)){
+  for(i in unique(df_orig$plate.ID)){
     print(paste("In Plate", i))
     
     x <- df_orig[df_orig$plate.ID == i,]
@@ -284,7 +297,7 @@ main <- function(classifier, plot="scatter", saveImg = F){
         next
       }
       print(paste("   In Target", j))
-      y <- x[x$Target == j,-c(1:11)]
+      y <- x[x$Target == j,]
       if(i %in% c(3, 6)){
         graphFacetFlou_Reps(y, i, j, classifier = classifier, plot=plot, saveImg = saveImg)
       }else if(i %in% c(4, 5)){
@@ -300,14 +313,17 @@ main <- function(classifier, plot="scatter", saveImg = F){
 
 graphPlateTarget <- function(plate_id, target, classifier, factorID="", replicateID="", plot="scatter", saveImg=F){
   title <- custom_title(plate_id, target, "", "", classifier)
-  graphFacetFlou(df_orig[df_orig$plate.ID == plate_id & df_orig$Target == target,-c(1:11)], title, plot = plot, classifier = classifier, saveImg=saveImg)
+  graphFacetFlou(df_orig[df_orig$plate.ID == plate_id & df_orig$Target == target,], title, plot = plot, classifier = classifier, saveImg=saveImg)
 }
 
 # classifier : "", "cloudy", "cloudy_rain", "EM (BIC | ICL)", "EM_t (BIC | ICL)"
 # plot : "hist", "histWDens", "scatter"
-# main(classifier="EM_t", plot="histWDens", saveImg = TRUE)
+# main(classifier="EM_t (BIC)", plot="histWDens", saveImg = TRUE)
+# main(classifier="EM_t (ICL)", plot="histWDens", saveImg = TRUE)
+# main(classifier="EM (BIC)", plot="histWDens", saveImg = TRUE)
+# main(classifier="EM (ICL)", plot="histWDens", saveImg = TRUE)
+# graphPlateTarget(1,"acp", "EM (ICL)", plot="histWDens", saveImg = FALSE)
 
-graphPlateTarget(1,"acp", "EM (ICL)", plot="histWDens", saveImg = FALSE)
 # graphPlateTarget(4,"TC1507", "EM", plot="histWDens", saveImg = FALSE)
 # graphPlateTarget(7,"M88017", "EM", plot="histWDens", saveImg = FALSE)
 
