@@ -64,11 +64,14 @@ main <- function(classifier, func, save = F){
   for(i in unique(df_est$plate.ID)){
     print(paste("In Plate", i))
     x <- df_est[df_est$plate.ID == i,]
-    if(i %in% c(2, 3, 4, 6, 7, 8)){
+    if(i %in% c(1, 2, 3, 4, 6, 7, 8, 9)){
       for(j in unique(x$Target)){
         print(paste("   In Target", j))
         y <- x[x$Target == j,]
-        if(i == 2){
+        if(i == 1 || i == 9){
+          replicates <- 4
+          factorname <- "plate.ID"
+        }else if(i == 2){
           replicates <- 2
           factorname <- "Primers"
         }else if(i %in% c(3, 6)){
@@ -86,6 +89,7 @@ main <- function(classifier, func, save = F){
         y$replicate <- as.factor(rep(c(1:replicates), length(unique(y$factors))))
         
         func(y, custom_title(i, j, classifier), classifier, factorname, saveImg=save)
+        break
       }
     }else if(i == 5){
       for(j in unique(x$Target)){
@@ -100,6 +104,7 @@ main <- function(classifier, func, save = F){
         }
       }
     }
+    break
   }
   print("done!")
 }
@@ -109,7 +114,7 @@ df_est <- read.csv("Estimates_lievens_EM_t (BIC).csv")
 # Classifiers : "cloudy", "cloudy_norain", "EM", "definetherain"
 #
 # OPTION 1 : Graph Error bars
-main(classifier="EM_t (BIC)", graph_ErrorBar, save = T)
+main(classifier="EM_t (BIC)", graph_ErrorBar, save = FALSE)
 #
 # OPTION 2 : Calculate Estimate Statistics
 # outfilename <- "EstimateStats_definetherain.csv"

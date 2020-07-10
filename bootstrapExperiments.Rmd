@@ -1,0 +1,30 @@
+---
+title: "Bootstrap dPCR experiments"
+output: html_notebook
+---
+
+```{r}
+source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/mine_bootstrap.R")
+
+# DEFAULT SETTINGS
+PARTITIONS = 20000
+BOOTSTRAPS = 2000
+LAMBDA_RANGE = seq(7, 10, length.out = 75) #10^seq(log10(0.001), log10(0.05), length.out=75)
+REPEATS = 1:4
+
+main(PARTITIONS, BOOTSTRAPS, LAMBDA_RANGE, REPEATS)
+```
+
+For Lieven's plate 1 lambda estimates
+```{r}
+PARTITIONS = 9972
+BOOTSTRAPS = 2000
+# LAMBDA_RANGE = seq(7, 10, length.out = 75) #10^seq(log10(0.001), log10(0.05), length.out=75)
+LAMBDA_RANGE = c(10^seq(from = log10(0.01), to = log10(0.75), length = 15),
+             seq(from = 2.00, to = 7.00, length = 15))
+REPEATS = 1:1
+
+main(PARTITIONS, BOOTSTRAPS, LAMBDA_RANGE, REPEATS)
+
+```
+

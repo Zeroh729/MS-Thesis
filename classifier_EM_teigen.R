@@ -75,5 +75,10 @@ teigen_dist <- function(x, df, mu, sigma){
   return(prob)
 }
 
-# x <- emclassifier_teigen(flou, 0.85, crit="BIC")
-
+# emres <- emclassifier_teigen(flou, 0.85, crit="ICL")
+#
+# Comparison with 3 Targets in Umbrella tutorial data
+#           Umbrella  (by thres) |  (by robust)  | Mine
+# Target 1 :  6021  |  6008  |  6021
+# Target 2 :  5893  |  5914  |  5075
+# Target 3 :  5717  |  5697  |  5724

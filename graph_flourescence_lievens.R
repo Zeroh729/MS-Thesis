@@ -1,19 +1,23 @@
 setwd("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master")
 
-if(!exists("df_orig")) df_orig <- read.csv("Dataset_t_sampled.csv")
+if(!exists("df_orig")) df_orig <- readRDS("Dataset_t_sampled.RDS")
 
 library(ggplot2)
 library(gridExtra)
 library(dplyr)
 library(magrittr)
-source("Cloudy-V2-04_classification.R")
-source("graph_utils.R")
+library(doParallel)
+source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/Cloudy-V2-04_classification.R")
+source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/graph_utils.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_teigen.R")
+source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_tskew.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/utils.R")
 
 ..PRINTPLOT <- FALSE
 
+
+registerDoParallel(cores = 4)
 prepareFlou <- function(flou){
   flou <- flou[!is.na(flou)]
   flou <- as.numeric(as.character((flou)))
@@ -79,6 +83,10 @@ vecFlou_toDf  <- function(flou, classifier=""){
     res_info$G <- G
     res_info$title <- title
     res_info$subtitle <- subtitle
+  }else if(mainClassifier == "EM_tskew"){
+    criteria <- if(is.na(criteria)) "BIC" else criteria
+    res_info <- emclassifier_tskew(vecFluo = flou, volDrp = 0.85, crit = criteria)
+    cl <- res_info$classification
   }
   res_info$classifier <- mainClassifier
   res_info$criteria <- if(is.na(criteria)) "" else paste0("(",criteria,")")
@@ -156,6 +164,8 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
       y <- dnorm(x, mean = estParam[clus,"Mu"], sd = estParam[clus,"Sigma"])     
     }else if(resInfo$classifier == "EM_t"){
       y <- teigen_dist(x, df=estParam[clus,"Df"], mu=estParam[clus,"Mu"], sigma=estParam[clus,"Sigma"]^2)
+    }else if(resInfo$classifier == "EM_tskew"){
+      y <- ddmst(x, n = length(x), p = 1, mean = estParam[clus,"Mu"], cov = estParam[clus,"Sigma"]^2, nu = estParam[clus,"Df"], del =  estParam[clus,"Skew"])
     }
     y <- y * estParam[clus, "MixProp"]
     return(y)
@@ -208,17 +218,29 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
 classifyFlou <- function(list_vecFlou, classifier){
   listData <- list()
   listResInfo <- list()
-  for(i in 1:nrow(list_vecFlou)){
+  temp <- foreach(i = 1:nrow(list_vecFlou), .export = c("vecFlou_toDf", "prepareFlou")) %dopar% {
+    source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/Cloudy-V2-04_classification.R", local = TRUE)
+    source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/graph_utils.R", local = TRUE)
+    source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM.R", local = TRUE)
+    source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_teigen.R", local = TRUE)
+    source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_tskew.R", local = TRUE)
+    source("D:/~Masters/~ MS-STAT/~THESIS/Code/utils.R", local = TRUE)
     # returns id | flou | cl=["", "cloudy", "cloudy_rain"]
     g(data, res_info) %=% vecFlou_toDf(list_vecFlou[i,-c(1:11)], classifier)
-    listData[[length(listData)+1]] <- data
     res_info$reactId <- list_vecFlou[i,"react.ID"]
-    listResInfo[[length(listResInfo)+1]] <- res_info
+    # listData[[length(listData)+1]] <- data
+    # listResInfo[[length(listResInfo)+1]] <- res_info
+    list(data, res_info)
   }
+  # listData[[length(listData)+1]] <- data
+  # listResInfo[[length(listResInfo)+1]] <- res_info
+  
+  listData <- sapply(temp, function(x) list(x[[1]]))
+  listResInfo <- sapply(temp, function(x) list(x[[2]]))
   return(list(listData, listResInfo))
 }
 
-graphFacetFlou <- function(list_vecFlou, title, classifier = "", plot="scatter", saveImg = F){ #scatter|hist
+graphFacetFlou <- function(list_vecFlou, title, classifier = "", plot="scatter", saveImg = FALSE){ #scatter|hist
   g(listData, listResInfo) %=% classifyFlou(list_vecFlou, classifier)
   if(plot == "scatter"){
     p <- getList_Scatter(listData)
@@ -235,16 +257,17 @@ graphFacetFlou <- function(list_vecFlou, title, classifier = "", plot="scatter",
   ylab <- p[['nrow']]
   
   # facet <- do.call(grid.arrange, c(listPlots, nrow = nrow, ncol=ncol, widths=list(widths), top=title, name="name"))
-  facet <<- arrangeGrob(grobs = listPlots, nrow = nrow, ncol=ncol, widths=widths, top=title, name="name")
+  facet <- arrangeGrob(grobs = listPlots, nrow = nrow, ncol=ncol, widths=widths, top=title, name="name")
   if(..PRINTPLOT){
     grid::grid.draw(facet)
   }
   if(saveImg){
     filedir <- paste0("plot_",plot,"-",classifier)
     dir.create(filedir, showWarnings = FALSE)
-    filename <- paste0(filedir,"/",title)
+    filename <- paste0(filedir,"/",title, ".png")
     height <- if(plot == "scatter") 4.5 else 8
-    ggsave(paste0(filename,".png"), facet,"png", width = 12, height = height, units = c("in"))
+    writeLines(paste0("Saving in ", filename))
+    ggsave(filename, facet,"png", width = 12, height = height, units = c("in"))
   }
 }
 
@@ -263,10 +286,10 @@ graphFacetFlou_Facs <- function(list_vecFlou, plate, target, classifier, plot, s
     }
   }else if(plate == 4){
     for(factID in 1:3){
-        title <- custom_title(plate, target, factID, replicateID="", classifier) #plate, target, factorID, replicateID, classifier
-        sampledFlou <- filterReplicates(nrow(list_vecFlou), plate, factID)
-        graphFacetFlou(list_vecFlou[sampledFlou,], title, classifier=classifier, plot=plot, saveImg=saveImg) # [TC1507, M88017]    
-      }
+      title <- custom_title(plate, target, factID, replicateID="", classifier) #plate, target, factorID, replicateID, classifier
+      sampledFlou <- filterReplicates(nrow(list_vecFlou), plate, factID)
+      graphFacetFlou(list_vecFlou[sampledFlou,], title, classifier=classifier, plot=plot, saveImg=saveImg) # [TC1507, M88017]    
+    }
   }
 }
 
@@ -287,10 +310,9 @@ filterReplicates <- function(n_repl, plate, factorID=1, replicateID=1){
   return(n_repl)
 }
 
-main <- function(classifier, plot="scatter", saveImg = F){
+main <- function(classifier, plot="scatter", saveImg = FALSE){
   for(i in unique(df_orig$plate.ID)){
     print(paste("In Plate", i))
-    
     x <- df_orig[df_orig$plate.ID == i,]
     for(j in unique(x$Target)){
       if(i == 7 && (j == "acp" || j == "M88017")){
@@ -306,7 +328,9 @@ main <- function(classifier, plot="scatter", saveImg = F){
         title <- custom_title(i, j, "", "", classifier) #plate, target, factorID, replicateID, classifier
         graphFacetFlou(y, title, classifier = classifier, plot=plot, saveImg = saveImg) 
       }
+      #      break
     }
+    #    break
   }
   print("done!")
 }
@@ -316,13 +340,21 @@ graphPlateTarget <- function(plate_id, target, classifier, factorID="", replicat
   graphFacetFlou(df_orig[df_orig$plate.ID == plate_id & df_orig$Target == target,], title, plot = plot, classifier = classifier, saveImg=saveImg)
 }
 
-# classifier : "", "cloudy", "cloudy_rain", "EM (BIC | ICL)", "EM_t (BIC | ICL)"
+
+# classifier : "", "cloudy", "cloudy_rain", "EM (BIC | ICL)", "EM_t (BIC | ICL)", "EM_tskew (BIC | ICL)"
 # plot : "hist", "histWDens", "scatter"
 # main(classifier="EM_t (BIC)", plot="histWDens", saveImg = TRUE)
 # main(classifier="EM_t (ICL)", plot="histWDens", saveImg = TRUE)
 # main(classifier="EM (BIC)", plot="histWDens", saveImg = TRUE)
 # main(classifier="EM (ICL)", plot="histWDens", saveImg = TRUE)
-# graphPlateTarget(1,"acp", "EM (ICL)", plot="histWDens", saveImg = FALSE)
+# main(classifier="EM_tskew (ICL)", plot="histWDens", saveImg = TRUE)
+
+graphPlateTarget(7,"GTS4032", "EM_tskew (BIC)", plot="histWDens", saveImg = TRUE)
+graphPlateTarget(7,"GTS4032", "EM_tskew (AIC)", plot="histWDens", saveImg = TRUE)
+graphPlateTarget(7,"GTS4032", "EM_tskew (ICL)", plot="histWDens", saveImg = TRUE)
+graphPlateTarget(9,"GTS4032", "EM_tskew (BIC)", plot="histWDens", saveImg = TRUE)
+graphPlateTarget(9,"GTS4032", "EM_tskew (AIC)", plot="histWDens", saveImg = TRUE)
+graphPlateTarget(9,"GTS4032", "EM_tskew (ICL)", plot="histWDens", saveImg = TRUE)
 
 # graphPlateTarget(4,"TC1507", "EM", plot="histWDens", saveImg = FALSE)
 # graphPlateTarget(7,"M88017", "EM", plot="histWDens", saveImg = FALSE)

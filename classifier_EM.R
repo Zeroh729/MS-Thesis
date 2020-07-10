@@ -70,7 +70,7 @@ em <- function(drp, volDrp, crit="BIC"){
 
 # setwd("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/Dataset - one csv per reactionID")
 # drp <- read.csv("7_cru_338.csv")
-# res <- em(drp)
+# res <- em(drp, 0.85)
 # thres <- res$thres
 
 # funcShaded <- function(x, clus) {
