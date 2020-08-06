@@ -35,10 +35,11 @@ simulateTarget <- function(conc, R, ntot=20000){
     list(mu=8000, sigma=250, lambda=0.5, chi=55, gamma=0),  # Rain 1
     list(mu=8000, sigma=350, lambda=0.5, chi=55, gamma=-350),  # Rain 2
     list(mu=3500, sigma=450, lambda=0.5, chi=55, gamma=200),  # Rain 3
-    list(mu=2500, sigma=550, lambda=0.5, chi=55, gamma=350)  # Rain 
+    # list(mu=2500, sigma=550, lambda=0.5, chi=55, gamma=350)  # Rain 4 (original)
+    list(mu=2500, sigma=550, lambda=0.5, chi=55, gamma=350)  # Rain
   )
   
-  model_f1 <- ghyp(mu = param[[R]]$mu,   # 0
+  model_f1 <<- ghyp(mu = param[[R]]$mu,   # 0
                    sigma = param[[R]]$sigma,      # 1
                    lambda = param[[R]]$lambda,    # 0.5 - kurtosis?
                    chi = param[[R]]$chi,          # 0.5 - kurtosis?
@@ -47,10 +48,14 @@ simulateTarget <- function(conc, R, ntot=20000){
   # plot(model_f1)
   
   # Step 2 : Get f2
+  x_f1 <- c()
   repeat{
-    x_f1 <- rghyp(npos, model_f1)
-    if(min(x_f1) >= 0){
-      # hist(x_f1)
+    n_remaining <- npos - length(x_f1)
+    x_new <- rghyp(n_remaining, model_f1)
+    x_new <- x_new[which(x_new >= median(x_f0))]
+    
+    x_f1 <- c(x_f1, x_new)
+    if(length(x_f1) == npos){
       break
     }
   }
@@ -61,27 +66,31 @@ simulateTarget <- function(conc, R, ntot=20000){
   
   return(x_flou)
 }
+#[getNneg(0.4):20000]
+# data.frame(drops = simulateTarget(2.5, 4)) %>% 
+#   ggplot(., aes(x=drops))+geom_histogram(bins=60, lwd=0.1, fill="gray80", col="gray30") + scale_x_continuous(n.breaks = 7) + theme_minimal()
 
 # setwd("D:/~Masters/~ MS-STAT/~THESIS/Code/simulated")
-# for(conc in c(0.1, 0.4, 1, 2.5)){
-#   for(r in 1:4){        # Rain settings
-#     for(i in 1:5){      # Replicates
-#       Targets <- lapply(1:3, function(x) simulateTarget(conc = conc, R = r))
-#       NTCs <- lapply(1:3, function(x) simulateNTC())
-#       
-#       simulated <- data.frame(c(Targets, NTCs))
-#       colnames(simulated) <- c(paste0("Target",1:3), paste0("NTC",1:3))
-#       
-#       if(conc==0.1){ label_conc <- "A" }else 
-#       if(conc==0.4){ label_conc <- "B" }else 
-#       if(conc==1  ){ label_conc <- "C" }else 
-#       if(conc==2.5){ label_conc <- "D" }
-#       
-#       filename <- paste0("sim_conc",label_conc,"_R",r,"_rep",i,".csv")
-#       write.csv(simulated, file = filename, row.names = FALSE)
-#       # break
-#     }
-#     # break
-#   }
-#   # break
-# }
+setwd("D:/~Masters/~ MS-STAT/~THESIS/Code/simulated2")
+for(conc in c(0.1, 0.4, 1, 2.5)){
+  for(r in 1:4){        # Rain settings
+    for(i in 1:5){      # Replicates
+      Targets <- lapply(1:3, function(x) simulateTarget(conc = conc, R = r))
+      NTCs <- lapply(1:3, function(x) simulateNTC())
+
+      simulated <- data.frame(c(Targets, NTCs))
+      colnames(simulated) <- c(paste0("Target",1:3), paste0("NTC",1:3))
+
+      if(conc==0.1){ label_conc <- "A" }else
+      if(conc==0.4){ label_conc <- "B" }else
+      if(conc==1  ){ label_conc <- "C" }else
+      if(conc==2.5){ label_conc <- "D" }
+
+      filename <- paste0("sim_conc",label_conc,"_R",r,"_rep",i,".csv")
+      write.csv(simulated, file = filename, row.names = FALSE)
+      # break
+    }
+    # break
+  }
+  # break
+}

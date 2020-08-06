@@ -1,7 +1,7 @@
-setwd("D:/~Masters/~ MS-STAT/~THESIS/Code/simulated")
+setwd("D:/~Masters/~ MS-STAT/~THESIS/Code/simulated2")
 source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Jacobs/umbrella-master/1D/Umbrella_1d_V1.R")
+source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/Cloudy-V2-04_classification.R")
 source("../classifier_EM.R")
-source("../classifier_EM_teigen.R")
 source("../classifier_EM_tskew.R")
 library(doParallel)
 
@@ -16,7 +16,7 @@ getMethodFilename <- function(method){
   if(method=="EM"){
     return("EM (ICL)")
   }else if(method=="EM_t"){
-    return("EM_t (ICL)")
+    return("EM_t (BIC)")
   }else if(method=="EM_tskew"){
     return("EM_tskew (BIC)")
   }
@@ -45,11 +45,11 @@ getResultList <- function(n_neg, n_pos, n_rain, filename, rep){
 }
 
 main <- function(method){
-  setwd("D:/~Masters/~ MS-STAT/~THESIS/Code/simulated")
+  setwd("D:/~Masters/~ MS-STAT/~THESIS/Code/simulated2")
   if(method == "umbrella"){
     x <- mainUmbrella()
   }else{
-    x <- mainEM(method)
+    x <- mainEM_orCloudy(method)
   }
   y <- data.frame(t(sapply(x, function(z) return(unlist(z)))))
   filename <- paste0("../Estimates_simulated_",getMethodFilename(method),".csv")
@@ -57,7 +57,7 @@ main <- function(method){
   writeLines(paste0("Saved! ", filename))
 }
 
-mainEM <- function(method){
+mainEM_orCloudy <- function(method){
   x <- foreach(f = list.files(pattern = ".csv"), .combine = c) %:% 
     foreach(t = 1:3) %dopar% {
       writeLines(paste0("f ", f))
@@ -65,15 +65,22 @@ mainEM <- function(method){
       target <- read.csv(f)[,t]  # only read columns Target1-3, no need for NTC
       if(method == "EM"){
         emres <- emclassifier(target, volDrp = 0.85, crit = "ICL")
+        classification <- emres$classification
       }else if(method == "EM_t"){
-        emres <- emclassifier_teigen(target, volDrp = 0.85, crit = "ICL")
+        emres <- emclassifier_t(target, volDrp = 0.85, crit = "BIC")
+        classification <- emres$classification
       }else if(method == "EM_tskew"){
         emres <- emclassifier_tskew(target, volDrp = 0.85, crit = "BIC")
+        classification <- emres$classification
+      }else if(method == "cloudy"){
+        res <- cloudyClassifier(target, showRain = TRUE)
+        classification <- res
       }
       
-      n_neg <- sum(emres$classification == "neg")
-      n_rain <- sum(emres$classification == "rain")
-      n_pos <- sum(emres$classification == "pos")
+      n_neg <- sum(classification == "neg")
+      n_rain <- sum(classification == "rain")
+      n_pos <- sum(classification == "pos")
+
       return(getResultList(n_neg = n_neg, n_pos = n_pos, n_rain = n_rain, filename = f, rep = t))
     }
   return(x)
@@ -96,7 +103,8 @@ mainUmbrella <- function(){
   }
   return(x)
 }
-
-main("EM_tskew")
-main("umbrella")
+# 
+# main("cloudy")
+# main("umbrella")
+# main("EM_tskew")
 main("EM_t")

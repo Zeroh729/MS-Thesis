@@ -6,8 +6,18 @@ library(EMMIXskew)
 library(dplyr)
 
 emclassifier_tskew <- function(vecFluo, volDrp, crit="BIC"){
-  res <- em_tskew(data.frame(Fluorescence=sort(vecFluo)), volDrp, crit)
-  
+  res <- em_tskew(data.frame(Fluorescence=sort(vecFluo)), distr="mst",volDrp = volDrp, crit)
+  res_info <- get_resInfo(res)
+  return(res_info)
+}
+
+emclassifier_t <- function(vecFluo, volDrp, crit="BIC"){
+  res <- em_tskew(data.frame(Fluorescence=sort(vecFluo)), distr = "mvt", volDrp = volDrp, crit)
+  res_info <- get_resInfo(res)
+  return(res_info)
+}
+
+get_resInfo <- function(res){
   res_info <- list()
   estParam <- data.frame(Mu = c(res$em$mu), Sigma = sqrt(c(res$em$sigma)), Df = res$em$dof, Skew = c(res$em$delta), MixProp = res$em$pro) %>%
     mutate(NegThres = rep(res$negThres, nrow(.))) %>%
@@ -26,11 +36,10 @@ emclassifier_tskew <- function(vecFluo, volDrp, crit="BIC"){
   
   res_info$title <- title
   res_info$subtitle <- subtitle
-  
   return(res_info)
 }
 
-em_tskew <- function(drp, volDrp, crit="BIC"){
+em_tskew <- function(drp, volDrp, distr, crit="BIC"){
   getClusMemberProb <- function(emres){
     clusterMem <- emres$tau
     means <- emres$mu
@@ -69,8 +78,8 @@ em_tskew <- function(drp, volDrp, crit="BIC"){
   
   set.seed(1234)
   # Manual - https://cran.r-project.org/web/packages/EMMIXskew/EMMIXskew.pdf; ncov = 3 means general variance (1 & 2 gives me equal variances)
-  emres_G2 <- EmSkew(drp, init = getInitParams(drp, G = 2), g = 2, nkmeans = 2, nrandom = 2, distr = "mst", ncov = 3, initloop = 20, debug = FALSE) # MAIN FUNCTION
-  emres_G3 <- EmSkew(drp, init = getInitParams(drp, G = 3), g = 3, nkmeans = 3, nrandom = 3, distr = "mst", ncov = 3, initloop = 20, debug = FALSE) # MAIN FUNCTION
+  emres_G2 <- EmSkew(drp, init = getInitParams(drp, G = 2), g = 2, nkmeans = 2, nrandom = 2, distr = distr, ncov = 3, initloop = 20, debug = FALSE) # MAIN FUNCTION
+  emres_G3 <- EmSkew(drp, init = getInitParams(drp, G = 3), g = 3, nkmeans = 3, nrandom = 3, distr = distr, ncov = 3, initloop = 20, debug = FALSE) # MAIN FUNCTION
   
   if(crit == "BIC"){
     scoreG2 <- emres_G2$bic
