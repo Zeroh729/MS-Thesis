@@ -1,6 +1,7 @@
 setwd("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master")
 
-if(!exists("df_orig")) df_orig <- readRDS("Dataset_t_sampled.RDS")
+df_orig <- readRDS("Dataset_t_sampled.RDS")
+df_orig <- filter(df_orig, ! react.ID %in% c(358, 383))
 
 library(ggplot2)
 library(gridExtra)
@@ -10,14 +11,13 @@ library(doParallel)
 source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/Cloudy-V2-04_classification.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/graph_utils.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM.R")
-source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_teigen.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_tskew.R")
 source("D:/~Masters/~ MS-STAT/~THESIS/Code/utils.R")
+source("D:/~Masters/~ MS-STAT/~THESIS/Code/DropEmPCR.R")
 
 ..PRINTPLOT <- FALSE
 
-
-registerDoParallel(cores = 4)
+registerDoParallel(cores = 3)
 prepareFlou <- function(flou){
   flou <- flou[!is.na(flou)]
   flou <- as.numeric(as.character((flou)))
@@ -63,30 +63,22 @@ vecFlou_toDf  <- function(flou, classifier=""){
     res_info$subtitle <- subtitle
   }else if(mainClassifier == "EM_t"){
     criteria <- if(is.na(criteria)) "BIC" else criteria
-    res <- emclassifier_teigen(flou, volDrp=0.85, crit = criteria)
-    cl <- res$classification
+    res_info <- emclassifier_t(flou, volDrp=0.85, crit = criteria)
+    cl <- res_info$classification
     cl <- factor(cl, levels = c("pos", "neg",  "rain"))
-    
-    # TODO - Move all this in emclassifier_teigen function
-    estParam <- data.frame(Mu = res$em$parameters$mean, Sigma = sqrt(c(res$em$parameters$sigma)), Df = res$em$parameters$df, MixProp = res$em$parameters$pig) %>%
-      mutate(NegThres = rep(res$negThres, nrow(.))) %>%
-      mutate(PosThres = rep(res$posThres, nrow(.))) %>% 
-      arrange(Mu)
-    res_info$est_parameter <- estParam
-    G <- res$G
-    
-    title <- bquote("Neg~"~t~"("~v==.(round(estParam[1,"Df"],2))~","~mu==.(round(estParam[1,"Mu"],2))~","~sigma==.(round(estParam[1,"Sigma"],2))~")")
-    subtitle <- bquote("Pos~"~t~"("~v==.(round(estParam[G,"Df"],2))~","~mu==.(round(estParam[G,"Mu"],2))~","~sigma==.(round(estParam[G,"Sigma"],2))~")")
-    if(G == 3){
-      res_info$desc <- bquote("Rain~"~t~"("~v==.(round(estParam[2,"Df"],2))~","~mu==.(round(estParam[2,"Mu"],2))~","~sigma==.(round(estParam[2,"Sigma"],2))~")")
-    }
-    res_info$G <- G
-    res_info$title <- title
-    res_info$subtitle <- subtitle
   }else if(mainClassifier == "EM_tskew"){
     criteria <- if(is.na(criteria)) "BIC" else criteria
     res_info <- emclassifier_tskew(vecFluo = flou, volDrp = 0.85, crit = criteria)
     cl <- res_info$classification
+    cl <- factor(cl, levels = c("pos", "neg",  "rain"))
+  }else if(grepl("DropEmPCR",mainClassifier)){
+    if(mainClassifier == "DropEmPCR_t"){
+      res_info <- DropEmPCR(flou, volDrp = 0.85, distr = "mvt")
+    }else if(mainClassifier == "DropEmPCR_tskew"){
+      res_info <- DropEmPCR(flou, volDrp = 0.85, distr = "mst")
+    }
+    cl <- res_info$classification
+    cl <- factor(cl, levels = c("pos", "neg",  "rain"))
   }
   res_info$classifier <- mainClassifier
   res_info$criteria <- if(is.na(criteria)) "" else paste0("(",criteria,")")
@@ -131,7 +123,7 @@ getList_Hist <- function(listData, listResInfo, wDens = FALSE){
   # ncol <- as.integer(n_repl/2)
   # widths <- c(rep(100/ncol, ncol))
   
-  ncol <- as.integer(n_repl/2)
+  ncol <- ceiling(n_repl/2)
   p1 <- listPlots[[1]]
   listPlots[(ncol+2):(n_repl+1)] <- listPlots[(ncol+1):(n_repl)]
   listPlots[[(ncol+1)]] <- get_legend(p1)
@@ -145,7 +137,7 @@ getList_Hist <- function(listData, listResInfo, wDens = FALSE){
 getHist <- function(i, listPlots, listData){
   data <- listData[[i]] %>% mutate(cl = rep("drp", nrow(.)))
   plot <- ggplot(data, aes(x=flou, color=cl)) +
-    geom_histogram(color="darkblue", fill="lightblue") +
+    geom_histogram(color="darkblue", fill="lightblue", bins = 60) +
     geom_density(alpha=.4, fill="lightblue" ) +
     scale_color_manual(values=c("#00AFBB", "#F8786F", "#999999")) +
     labs(title="", x="", y = "")
@@ -162,9 +154,9 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
   funcShaded <- function(x, clus) {
     if(resInfo$classifier == "EM"){
       y <- dnorm(x, mean = estParam[clus,"Mu"], sd = estParam[clus,"Sigma"])     
-    }else if(resInfo$classifier == "EM_t"){
-      y <- teigen_dist(x, df=estParam[clus,"Df"], mu=estParam[clus,"Mu"], sigma=estParam[clus,"Sigma"]^2)
-    }else if(resInfo$classifier == "EM_tskew"){
+    }else if(resInfo$classifier == "EM_t" || resInfo$classifier == "DropEmPCR_t"){
+      y <- ddmst(x, n = length(x), p = 1, mean = estParam[clus,"Mu"], cov = estParam[clus,"Sigma"]^2, nu = estParam[clus,"Df"])
+    }else if(resInfo$classifier == "EM_tskew" || resInfo$classifier == "DropEmPCR_tskew"){
       y <- ddmst(x, n = length(x), p = 1, mean = estParam[clus,"Mu"], cov = estParam[clus,"Sigma"]^2, nu = estParam[clus,"Df"], del =  estParam[clus,"Skew"])
     }
     y <- y * estParam[clus, "MixProp"]
@@ -180,7 +172,7 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
   plotHeight <- summary(density(data$flou)$y)[['Max.']]
   
   plot <- ggplot(data, aes(x=flou, fill=cl)) +
-    geom_histogram(aes(y =..density..),color="gray64", fill="gray88") +
+    geom_histogram(aes(y =..density..),color="gray64", fill="gray88", bins = 60) +
     stat_function(data = . %>% filter(cl=="neg"), fun = funcShaded, geom="area", alpha=0.3, args=list(clus=1)) +
     stat_function(data = . %>% filter(cl=="pos"), fun = funcShaded, geom="area", alpha=0.3, args=list(clus=G)) +
     scale_fill_manual(values=fills) +
@@ -218,15 +210,15 @@ getHistWDensity <- function(i, listPlots, listData, listResInfo){
 classifyFlou <- function(list_vecFlou, classifier){
   listData <- list()
   listResInfo <- list()
-  temp <- foreach(i = 1:nrow(list_vecFlou), .export = c("vecFlou_toDf", "prepareFlou")) %dopar% {
+  temp <- foreach(i = 1:nrow(list_vecFlou), .export = c("vecFlou_toDf", "prepareFlou", "..PRINTPLOT")) %do% {
     source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/Cloudy-V2-04_classification.R", local = TRUE)
     source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/graph_utils.R", local = TRUE)
     source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM.R", local = TRUE)
-    source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_teigen.R", local = TRUE)
     source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_tskew.R", local = TRUE)
     source("D:/~Masters/~ MS-STAT/~THESIS/Code/utils.R", local = TRUE)
+    source("D:/~Masters/~ MS-STAT/~THESIS/Code/DropEmPCR.R", local = TRUE)
     # returns id | flou | cl=["", "cloudy", "cloudy_rain"]
-    g(data, res_info) %=% vecFlou_toDf(list_vecFlou[i,-c(1:11)], classifier)
+    .g(data, res_info) %=% vecFlou_toDf(list_vecFlou[i,-c(1:11)], classifier)
     res_info$reactId <- list_vecFlou[i,"react.ID"]
     # listData[[length(listData)+1]] <- data
     # listResInfo[[length(listResInfo)+1]] <- res_info
@@ -241,7 +233,7 @@ classifyFlou <- function(list_vecFlou, classifier){
 }
 
 graphFacetFlou <- function(list_vecFlou, title, classifier = "", plot="scatter", saveImg = FALSE){ #scatter|hist
-  g(listData, listResInfo) %=% classifyFlou(list_vecFlou, classifier)
+  .g(listData, listResInfo) %=% classifyFlou(list_vecFlou, classifier)
   if(plot == "scatter"){
     p <- getList_Scatter(listData)
   }else if(plot == "hist"){
@@ -258,9 +250,10 @@ graphFacetFlou <- function(list_vecFlou, title, classifier = "", plot="scatter",
   
   # facet <- do.call(grid.arrange, c(listPlots, nrow = nrow, ncol=ncol, widths=list(widths), top=title, name="name"))
   facet <- arrangeGrob(grobs = listPlots, nrow = nrow, ncol=ncol, widths=widths, top=title, name="name")
-  if(..PRINTPLOT){
-    grid::grid.draw(facet)
-  }
+  # if(..PRINTPLOT){
+    # grid::grid.newpage()
+    # grid::grid.draw(facet)
+  # }
   if(saveImg){
     filedir <- paste0("plot_",plot,"-",classifier)
     dir.create(filedir, showWarnings = FALSE)
@@ -311,13 +304,13 @@ filterReplicates <- function(n_repl, plate, factorID=1, replicateID=1){
 }
 
 main <- function(classifier, plot="scatter", saveImg = FALSE){
-  for(i in unique(df_orig$plate.ID)){
+  for(i in c(7)){ #unique(df_orig$plate.ID)){
     print(paste("In Plate", i))
     x <- df_orig[df_orig$plate.ID == i,]
-    for(j in unique(x$Target)){
-      if(i == 7 && (j == "acp" || j == "M88017")){
-        next
-      }
+    for(j in c("acp", "M88017")){ #unique(x$Target)){
+      # if(i == 7 && (j == "acp" || j == "M88017")){
+      #   next
+      # }
       print(paste("   In Target", j))
       y <- x[x$Target == j,]
       if(i %in% c(3, 6)){
@@ -328,9 +321,9 @@ main <- function(classifier, plot="scatter", saveImg = FALSE){
         title <- custom_title(i, j, "", "", classifier) #plate, target, factorID, replicateID, classifier
         graphFacetFlou(y, title, classifier = classifier, plot=plot, saveImg = saveImg) 
       }
-      #      break
+           # break
     }
-    #    break
+       # break
   }
   print("done!")
 }
@@ -347,14 +340,10 @@ graphPlateTarget <- function(plate_id, target, classifier, factorID="", replicat
 # main(classifier="EM_t (ICL)", plot="histWDens", saveImg = TRUE)
 # main(classifier="EM (BIC)", plot="histWDens", saveImg = TRUE)
 # main(classifier="EM (ICL)", plot="histWDens", saveImg = TRUE)
-# main(classifier="EM_tskew (ICL)", plot="histWDens", saveImg = TRUE)
-
-graphPlateTarget(7,"GTS4032", "EM_tskew (BIC)", plot="histWDens", saveImg = TRUE)
-graphPlateTarget(7,"GTS4032", "EM_tskew (AIC)", plot="histWDens", saveImg = TRUE)
-graphPlateTarget(7,"GTS4032", "EM_tskew (ICL)", plot="histWDens", saveImg = TRUE)
-graphPlateTarget(9,"GTS4032", "EM_tskew (BIC)", plot="histWDens", saveImg = TRUE)
-graphPlateTarget(9,"GTS4032", "EM_tskew (AIC)", plot="histWDens", saveImg = TRUE)
-graphPlateTarget(9,"GTS4032", "EM_tskew (ICL)", plot="histWDens", saveImg = TRUE)
+# main(classifier="EM_tskew (BIC)", plot="histWDens", saveImg = TRUE)
+# main(classifier="EM_t (BIC)", plot="histWDens", saveImg = TRUE)
+main(classifier="DropEmPCR_t", plot="histWDens", saveImg = TRUE)
+main(classifier="DropEmPCR_tskew", plot="histWDens", saveImg = TRUE)
 
 # graphPlateTarget(4,"TC1507", "EM", plot="histWDens", saveImg = FALSE)
 # graphPlateTarget(7,"M88017", "EM", plot="histWDens", saveImg = FALSE)

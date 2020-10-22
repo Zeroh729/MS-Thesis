@@ -1,6 +1,7 @@
 setwd("D:/~Masters/~ MS-STAT/~THESIS/Code")
 source("utils.R")
 source("common.R")
+source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/graph_utils.R")
 setwd("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/summarized")
 library(tidyr)
 library(dplyr)
@@ -11,8 +12,9 @@ library(magrittr)
 
 list_methods <- list(
   list(method = "cloudy", filename = "Estimates_lievens_cloudy.csv"),
-  list(method = "em", filename = "Estimates_lievens_EM (ICL).csv"),
-  list(method = "em-t", filename = "Estimates_lievens_EM_t (ICL).csv"))
+  list(method = "umbrella", filename = "Estimates_lievens_Umbrella.csv"),
+  list(method = "em-t", filename = "Estimates_lievens_EM_t (BIC).csv"),
+  list(method = "em-tskew", filename = "Estimates_lievens_EM_tskew (BIC).csv"))
 
 main <- function(df_est, save = F){
   for(i in unique(df_est$plate.ID)){
@@ -79,7 +81,8 @@ graph_ErrorBar <- function(d, title, factorname, saveImg){ #data must have the c
   }
   
   plotData <- inner_join(plotData, getBounds(estcols_l, to_colname="lower"), by = c("react.ID", "classifier")) %>% 
-    inner_join(getBounds(estcols_u, to_colname="upper"), by = c("react.ID", "classifier"))
+    inner_join(getBounds(estcols_u, to_colname="upper"), by = c("react.ID", "classifier")) %>% 
+    mutate(classifier = factor(classifier, levels = sapply(list_methods, function(x) x$method)))
   
   if(ESTIMATE_TO_PLOT == "conc"){
     plotData[6:8] <- getDNAConc(plotData[6:8])

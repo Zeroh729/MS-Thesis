@@ -1,39 +1,53 @@
-setwd("D:/~Masters/~ MS-STAT/~THESIS/Code")
-source("utils.R")
-source("common.R")
+source("D:/~Masters/~ MS-STAT/~THESIS/Code/utils.R")
+source("D:/~Masters/~ MS-STAT/~THESIS/Code/common.R")
 library(EMCluster)
 library(EMMIXskew)
 library(dplyr)
 
 emclassifier_tskew <- function(vecFluo, volDrp, crit="BIC"){
   res <- em_tskew(data.frame(Fluorescence=sort(vecFluo)), distr="mst",volDrp = volDrp, crit)
-  res_info <- get_resInfo(res)
+  res_info <- get_resInfo(res, "mst")
   return(res_info)
 }
 
 emclassifier_t <- function(vecFluo, volDrp, crit="BIC"){
   res <- em_tskew(data.frame(Fluorescence=sort(vecFluo)), distr = "mvt", volDrp = volDrp, crit)
-  res_info <- get_resInfo(res)
+  res_info <- get_resInfo(res, "mvt")
   return(res_info)
 }
 
-get_resInfo <- function(res){
+get_resInfo <- function(res, distr){
   res_info <- list()
-  estParam <- data.frame(Mu = c(res$em$mu), Sigma = sqrt(c(res$em$sigma)), Df = res$em$dof, Skew = c(res$em$delta), MixProp = res$em$pro) %>%
-    mutate(NegThres = rep(res$negThres, nrow(.))) %>%
-    mutate(PosThres = rep(res$posThres, nrow(.))) %>% 
-    arrange(Mu)
-  res_info$est_parameter <- estParam
-  res_info$classification <- res$classification
-  res_info$G <- G <- res$G
-  res_info$emres <- res
+  G <- res$G
   
-  title <- bquote("Neg~"~t~"("~v==.(round(estParam[1,"Df"],2))~","~mu==.(round(estParam[1,"Mu"],2))~","~sigma==.(round(estParam[1,"Sigma"],2))~","~delta==.(round(estParam[1,"Skew"],2))~")")
-  subtitle <- bquote("Pos~"~t~"("~v==.(round(estParam[G,"Df"],2))~","~mu==.(round(estParam[G,"Mu"],2))~","~sigma==.(round(estParam[G,"Sigma"],2))~","~delta==.(round(estParam[G,"Skew"],2))~")")
-  if(G == 3){
-    res_info$desc <- bquote("Rain~"~t~"("~v==.(round(estParam[2,"Df"],2))~","~mu==.(round(estParam[2,"Mu"],2))~","~sigma==.(round(estParam[2,"Sigma"],2))~","~delta==.(round(estParam[2,"Skew"],2))~")")
+  if(distr == "mst"){
+    estParam <- data.frame(Mu = c(res$em$modpts), Sigma = sqrt(c(res$em$sigma)), Df = res$em$dof, Skew = c(res$em$delta), MixProp = res$em$pro) %>%
+      mutate(NegThres = rep(res$negThres, nrow(.))) %>%
+      mutate(PosThres = rep(res$posThres, nrow(.))) %>% 
+      arrange(Mu)
+    
+      title <- bquote("Neg~"~t~"("~v==.(round(estParam[1,"Df"],2))~","~mu==.(round(estParam[1,"Mu"],2))~","~sigma==.(round(estParam[1,"Sigma"],2))~","~delta==.(round(estParam[1,"Skew"],2))~")")
+      subtitle <- bquote("Pos~"~t~"("~v==.(round(estParam[G,"Df"],2))~","~mu==.(round(estParam[G,"Mu"],2))~","~sigma==.(round(estParam[G,"Sigma"],2))~","~delta==.(round(estParam[G,"Skew"],2))~")")
+      if(G == 3){
+        res_info$desc <- bquote("Rain~"~t~"("~v==.(round(estParam[2,"Df"],2))~","~mu==.(round(estParam[2,"Mu"],2))~","~sigma==.(round(estParam[2,"Sigma"],2))~","~delta==.(round(estParam[2,"Skew"],2))~")")
+      }
+  }else if(distr == "mvt"){
+    estParam <- data.frame(Mu = c(res$em$modpts), Sigma = sqrt(c(res$em$sigma)), Df = res$em$dof, MixProp = res$em$pro) %>%
+      mutate(NegThres = rep(res$negThres, nrow(.))) %>%
+      mutate(PosThres = rep(res$posThres, nrow(.))) %>% 
+      arrange(Mu)
+    
+    title <- bquote("Neg~"~t~"("~v==.(round(estParam[1,"Df"],2))~","~mu==.(round(estParam[1,"Mu"],2))~","~sigma==.(round(estParam[1,"Sigma"],2))~")")
+    subtitle <- bquote("Pos~"~t~"("~v==.(round(estParam[G,"Df"],2))~","~mu==.(round(estParam[G,"Mu"],2))~","~sigma==.(round(estParam[G,"Sigma"],2))~")")
+    if(G == 3){
+      res_info$desc <- bquote("Rain~"~t~"("~v==.(round(estParam[2,"Df"],2))~","~mu==.(round(estParam[2,"Mu"],2))~","~sigma==.(round(estParam[2,"Sigma"],2))~")")
+    }
   }
   
+  res_info$est_parameter <- estParam
+  res_info$classification <- res$classification
+  res_info$G <- G 
+  res_info$emres <- res
   res_info$title <- title
   res_info$subtitle <- subtitle
   return(res_info)
@@ -42,7 +56,7 @@ get_resInfo <- function(res){
 em_tskew <- function(drp, volDrp, distr, crit="BIC"){
   getClusMemberProb <- function(emres){
     clusterMem <- emres$tau
-    means <- emres$mu
+    means <- emres$modpts
     posClust <- which.max(means)
     negClust <- which.min(means)
     rainClust <- if(length(means)==3) which(means == median(means)) else NA
@@ -102,7 +116,7 @@ em_tskew <- function(drp, volDrp, distr, crit="BIC"){
     G <- 2
   }
   
-  g(negMemberProb, posMemberProb, classification) %=% getClusMemberProb(emres)
+  .g(negMemberProb, posMemberProb, classification) %=% getClusMemberProb(emres)
   nneg <- sum(classification == "neg")
   
   res <- list()

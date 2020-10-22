@@ -1,7 +1,7 @@
 setwd("D:/~Masters/~ MS-STAT/~THESIS/Code")
 source("classifier_EM.R")
-source("classifier_EM_teigen.R")
 source("classifier_EM_tskew.R")
+source("DropEmPCR.R")
 source("utils.R")
 
 setwd("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master")
@@ -11,7 +11,7 @@ library(zoo)
 library(dplyr)
 library(beepr)
 library(doParallel)
-registerDoParallel(cores = 4)
+registerDoParallel(cores = 2)
 
 listOfList_toColumn <- function(res_list, colName){
   return(sapply(res_list, function(x) return(x[[colName]])))
@@ -52,18 +52,19 @@ calculate_lambda_em <- function(res_info){
   r$n_pos <- sum(classification == "pos") 
   r$n_total <- length(classification)
   
-  if(res_info[['G']] == 3){
-    # option 1 - All rain is counted as negative
-    r$n_neg <- r$n_neg + r$n_rain
-    
-    # option 2 - Check first if rain is closer to negative
-    # mus <- sort(c(res_info[['est_parameter']]$Mu))
-    # if(abs(mus[2] - mus[1]) < abs(mus[2] - mus[3])){
-    #   writeLines(paste0("old neg : ", r$n_neg))
-    #   r$n_neg <- r$n_neg + r$n_rain
-    #   writeLines(paste0("new neg : ", r$n_neg))
-    # }
-  }
+  # Formula 2
+  # if(res_info[['G']] == 3){
+  #   # option 1 - All rain is counted as negative
+  #   # r$n_neg <- r$n_neg + r$n_rain
+  #   
+  #   # option 2 - Check first if rain is closer to negative
+  #   mus <- sort(c(res_info[['est_parameter']]$Mu))
+  #   if(abs(mus[2] - mus[1]) < abs(mus[2] - mus[3])){
+  #     writeLines(paste0("old neg : ", r$n_neg))
+  #     r$n_neg <- r$n_neg + r$n_rain
+  #     writeLines(paste0("new neg : ", r$n_neg))
+  #   }
+  # }
   
   r$estLambda <- -log(r$n_neg/r$n_tot)
   r$estLambda_l <- r$estLambda - 1.96 * sqrt((r$n_tot - r$n_neg)/(r$n_tot * r$n_neg))   #lower 95% confidence bound for lambda 1 (cpd)
@@ -76,16 +77,21 @@ mainLooped <- function(df, dataName, classifier="cloudy"){  # ("cloudy", "EM (BI
   
   mainClassifier <- strsplit(classifier, " ")[[1]][1]
   criteria <- gsub("(\\(|\\))", "", strsplit(classifier, " ")[[1]][2])
-  #
-  res <- foreach(i = 1:length(df[,1]), .export = c("calculate_lambda", "calculate_lambda_em", "calculate_estConc","getVolDrp")) %dopar% {
+
+  res <- foreach(i = 1:length(df[,1]), .export = c("calculate_lambda", "calculate_lambda_em", "calculate_estConc","getVolDrp")) %do% {
     source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM.R")
-    source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_teigen.R")
     source("D:/~Masters/~ MS-STAT/~THESIS/Code/classifier_EM_tskew.R")
+    source("D:/~Masters/~ MS-STAT/~THESIS/Code/DropEmPCR.R")
     source("D:/~Masters/~ MS-STAT/~THESIS/Code/utils.R")
     source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/mine_util.R")
     source("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/Cloudy-V2-04_classification.R")
     
-    if(i %in% c(358, 383)){
+    print(paste0("In experiment ", i))
+    drp <- as.numeric(df[i,])
+    drp <- drp[!is.na(drp)]
+    print(paste0("sum is ", sum(drp)))
+    
+    if(i %in% c(358, 383) || sum(drp) == 0){
        r <- list(n_neg = NA,
                  n_rain = NA,
                  n_pos = NA,
@@ -93,11 +99,7 @@ mainLooped <- function(df, dataName, classifier="cloudy"){  # ("cloudy", "EM (BI
                  estLambda = NA,
                  estLambda_l = NA,
                  estLambda_u = NA)
-      if(mainClassifier == "EM" || mainClassifier == "EM_tskew"){
-        r[['n_components']] <- NA
-        r[['critScore']] <- NA
-      }else if(mainClassifier == "EM_t"){
-        r[['modelname']] <- NA
+      if(mainClassifier == "EM" || mainClassifier == "EM_t" || mainClassifier == "EM_tskew"){
         r[['n_components']] <- NA
         r[['critScore']] <- NA
       }
@@ -110,27 +112,40 @@ mainLooped <- function(df, dataName, classifier="cloudy"){  # ("cloudy", "EM (BI
          r[['icl_G2']] <- NA
          r[['icl_G3']] <- NA
        }
+       if(mainClassifier == "DropEmPCR_tskew" || mainClassifier == "DropEmPCR_t"){
+         r[['G']] <- NA
+       }
       i_res <- r
       return(i_res)
     }
     
-    print(paste0("In experiment ", i))
-    drp <- as.numeric(df[i,])
-    drp <- drp[!is.na(drp)]
     res_extra <- list()
     if(mainClassifier == "cloudy"){
       # cloudy is default
       classification <- cloudyClassifier(drp, silent = TRUE, showRain = TRUE)
+      estLambda <- calculate_lambda(classification)
+    }else if(grepl("DropEmPCR",mainClassifier)){
+      if(mainClassifier == "DropEmPCR_t"){
+        res_info <- DropEmPCR(drp, volDrp = getVolDrp(dataName), distr = "mvt")
+        emres <- res_info$emres
+        res_extra[['G']] <- emres$G
+      }else if(mainClassifier == "DropEmPCR_tskew"){
+        res_info <- DropEmPCR(drp, volDrp = getVolDrp(dataName), distr = "mst")
+        emres <- res_info$emres
+        res_extra[['G']] <- emres$G
+      }
+      classification <- emres[['classification']]
       estLambda <- calculate_lambda(classification)
     }else {
       # only for EM or EM_t
       if(mainClassifier == "EM"){
         emres <- emclassifier(drp, volDrp = getVolDrp(dataName), crit = criteria)
       }else if(mainClassifier == "EM_t"){
-        emres <- emclassifier_teigen(drp, volDrp = getVolDrp(dataName), crit = criteria)
-        res_extra[['modelname']] <- emres$em$modelname
+        res_info <- emclassifier_t(drp, volDrp = getVolDrp(dataName), crit = criteria)
       }else if(mainClassifier == "EM_tskew"){
         res_info <- emclassifier_tskew(drp, volDrp = getVolDrp(dataName), crit = criteria)
+      }
+      if(mainClassifier == "EM_t" || mainClassifier == "EM_tskew"){
         emres <- res_info$emres
         if(res_info$G == 2){
           temp_emres_G2 <- res_info$emres$em
@@ -200,7 +215,12 @@ run <- function(df_orig, factorCols, dataName, classifier, save=FALSE){
 }
 
 dataName <- "lievens"     # "lievens" , "jones
-g(df_orig, factorCols) %=% getDataset(dataName)
+.g(df_orig, factorCols) %=% getDataset(dataName)
 
-classifier <- "EM_tskew (BIC)"      # "EM (BIC | ICL)", "EM_t (BIC | ICL)", "EM_tskew (BIC | ICL | AIC)"  ,  "cloudy"
+# classifier <- "EM_tskew (ICL)"      # "EM (BIC | ICL)", "EM_t (BIC | ICL)", "EM_tskew (BIC | ICL | AIC)"  ,  "cloudy"
+# classifier <- "DropEmPCR_t"
+# run(df_orig, factorCols, dataName, classifier=classifier, save=TRUE)
+
+classifier <- "DropEmPCR_tskew"
 run(df_orig, factorCols, dataName, classifier=classifier, save=TRUE)
+

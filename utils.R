@@ -35,10 +35,18 @@ extendToMatch <- function(source, destin) {
 }
 
 # Grouping the left hand side
-g = function(...) {
+.g = function(...) {
   List = as.list(substitute(list(...)))[-1L]
   class(List) = 'lbunch'
   return(List)
 }
 
-# setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+# Mine
+listOfList_toColumn <- function(x, colName){
+  if(length(colName) == 1)
+    return(sapply(x, function(y) return(y[[colName]])))
+  
+  return(sapply(x, function(y) return(c(sapply(colName, function(z) return(y[[z]]))))))
+}
+
+

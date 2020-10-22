@@ -2,10 +2,6 @@ cal_concentration <- function(nneg, total, volDrp){
   res <- list()
   volSamp <- 20
   
-  # print(paste("Negatives",nneg))
-  # print(paste("Total",total))
-  npos <- total - nneg
-  
   lambda <- -log(nneg/total)
   lower <- lambda - 1.96 * sqrt((total - length(nneg))/(total * length(nneg)))
   upper <- lambda + 1.96 * sqrt((total - length(nneg))/(total * length(nneg)))
@@ -28,7 +24,7 @@ addLambdaColumns <- function(df, list_methods){
     colname_lambda <- paste0(method$method, "_lambda")
     colname_lambda_l <- paste0(method$method, "_lambda_l")
     colname_lambda_u <- paste0(method$method, "_lambda_u")
-    g(lambda,lambda_l,lambda_u) %=% getLambda(df[[colname_n_neg]], df[[colname_n_total]])
+    .g(lambda,lambda_l,lambda_u) %=% getLambda(df[[colname_n_neg]], df[[colname_n_total]])
     df <- df %>% mutate(!!colname_lambda := lambda) %>% mutate(!!colname_lambda_l := lambda_l) %>% mutate(!!colname_lambda_u := lambda_u)
   }
   return(df)
