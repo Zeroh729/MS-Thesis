@@ -3,10 +3,10 @@ source("D:/~Masters/~ MS-STAT/~THESIS/Code/common.R")
 library(EMMIXskew)
 library(dplyr)
 
-DropEmPCR <- function(vecFluo, volDrp, distr, maxGroups=3){
+DropEmPCR <- function(vecFluo, volDrp, distr){
   #' distr = c("mvn", "msn", "mvt", "mst")
   #' 
-  res <- em(vecFluo, distr=distr,volDrp = volDrp, maxGroups=maxGroups)
+  res <- em(vecFluo, distr=distr,volDrp = volDrp)
   res_info <- get_resInfo(res, distr)
   return(res_info)
 }
@@ -56,7 +56,7 @@ get_resInfo <- function(res, distr){
   return(res_info)
 }
 
-em <- function(drp, volDrp, distr, maxGroups=3){
+em <- function(drp, volDrp, distr){
   getClusMemberProb <- function(drp, emres){
     if(length(emres$mu) > 1){
       clusterMem <- emres$tau
@@ -104,7 +104,6 @@ em <- function(drp, volDrp, distr, maxGroups=3){
     }
   }
   
-  # modes <- getInitMus(drp, maxGroups = maxGroups)
   modes <- getInitMus2(drp)
   G <- length(modes)
   initEMSkew <- list(mu = modes,
@@ -134,51 +133,6 @@ em <- function(drp, volDrp, distr, maxGroups=3){
     res$posThres <- 0
   }
   return(res)
-}
-
-getInitMus <- function(x, maxGroups = 3){
-  z <- hist(x, breaks = 50, plot = FALSE)
-  mode_i <- which(diff(sign(diff(c(0, z$counts))))==-2)
-  mode_i <- mode_i[z$counts[mode_i] >= 50]
-  mode_i <- groupNearModes(z, mode_i)
-  
-  # If only one population is detected, try less smoothed histogram w/ Scott
-  if(length(mode_i) < 2){
-    z <- hist(x, breaks = "Scott", plot = FALSE)
-    mode_i <- which(diff(sign(diff(c(0, z$counts))))==-2)
-    mode_i <- mode_i[z$counts[mode_i] >= 50]
-    mode_i <- groupNearModes(z, mode_i)
-  }
-  
-  # If still there is one population, increase number of breaks until 3/4s of the number of droplets
-  nbreaks <- length(z$breaks)
-  repeat{
-    if(length(mode_i) >= 2){
-      break
-    }
-    if(nbreaks >= 200){
-      warning("Only 1 population found")
-      return(mode_i)
-    }
-    nbreaks <- nbreaks + 1
-    z <- hist(x, breaks = nbreaks, plot = FALSE)
-    mode_i <- which(diff(sign(diff(c(0, z$counts))))==-2)
-    mode_i <- mode_i[z$counts[mode_i] >= 50]
-    mode_i <- groupNearModes(z, mode_i)
-  }
-  
-  # Get top distant maxGroups modes with highest counts
-  modes <- z$mids[mode_i]
-  if(length(mode_i) > maxGroups){
-    cluster_membership <- cutree(hclust(dist(modes)), k = maxGroups)
-    modes <- sapply(unique(cluster_membership), function(x){
-      clusters_i <- mode_i[cluster_membership == x]
-      z$mids[clusters_i[which.max(z$counts[clusters_i])]]
-    })
-  }
-  plot(z)
-  abline(v=modes)
-  return(modes)
 }
 
 findpeaks <- function(vec, bw = 1, x.coo = c(1:length(vec))){  #where bw = is box width, setting the sensitivity of the search
@@ -218,27 +172,6 @@ findpeaks <- function(vec, bw = 1, x.coo = c(1:length(vec))){  #where bw = is bo
   return(list("max.X" = pos.x.max, "max.Y" = pos.y.max, "min.X" = pos.x.min, "min.Y" = pos.y.min))
 }
 
-groupNearModes <- function(z, mode_i){
-  # Make sure modes are not 2 bins apart
-  if(length(mode_i) > 2){
-    for(i in 1:(length(mode_i))){
-      if(i == 1){
-        dist_modes <- diff(mode_i)
-        clusters <- 1
-        cluster_membership <- c()
-      }
-      cluster_membership <- c(cluster_membership, clusters)
-      if(i < length(mode_i) && dist_modes[i] > 2){
-        clusters <- clusters + 1
-      }
-    }
-    mode_i <- sapply(unique(cluster_membership), function(x){
-      clusters_i <- mode_i[cluster_membership == x]
-      clusters_i[which.max(z$counts[clusters_i])]
-    })
-  }
-  return(mode_i)
-}
 
 getInitMus2 <- function(x){
   bw <- bw.nrd0(x)
@@ -267,8 +200,6 @@ getInitMus2 <- function(x){
 
 # setwd("D:/~Masters/~ MS-STAT/~THESIS/Code/codes for simulation/4 - simulation/simulated")
 # vecFluo <- read.csv("amplitude/Simulated_091_Amplitude.csv")
-# getInitMus(vecFluo[,1], maxGroups = 3)
-
 # df_orig <- readRDS("D:/~Masters/~ MS-STAT/~THESIS/Papers/(Supplementary Files) Lievens/ddPCR-master/Dataset_t_sampled.RDS")
 # for(r in 161:168){
 #   print(r)
